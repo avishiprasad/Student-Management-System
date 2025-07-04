@@ -1,0 +1,244 @@
+﻿@page
+@model WebApplication4.Pages.StudentFormModel
+@{
+    ViewData["Title"] = "Student Form";
+}
+
+<head>
+    <link rel="stylesheet" href="~/css/StudentForm.css" asp-append-version="true" />
+</head>
+
+<body>
+
+    <nav class="navbar">
+        <div class="nav-left">
+            <button onclick="downloadExcel()">Download Excel</button>
+            <button onclick="openSSRSReport()">View SSRS Report</button>
+
+            <div class="dropdown">
+                <button class="dropbtn">Other Reports ▼</button>
+                <div class="dropdown-content">
+                    <a href="#" onclick="openReport('/Training/NameDatabase')">Name Report</a>
+                    <a href="#" onclick="openReport('/Training/CityDatabase')">City Report</a>
+                    <a href="#" onclick="openReport('/Training/StateDatabase')">State Report</a>
+                    <a href="#" onclick="openReport('/Training/CollegeYearDatabase')">College Year Report</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="nav-right">
+            <form id="searchForm">
+                <input id="searchName" type="text" placeholder="Enter student name" />
+                <button type="button" onclick="searchStudent()">Search</button>
+            </form>
+        </div>
+    </nav>
+
+
+    <div id="searchResult"></div>
+
+    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+        <h2 style="margin: 0;">All Students</h2>
+        <button type="button" onclick="showAddModal()">+</button>
+    </div>
+    <div id="studentTable"></div>
+
+    <!-- Add Student Modal -->
+    <div id="addModal" style="display:none; position:fixed; top:20%; left:50%; transform:translateX(-50%); background:white; padding:20px; box-shadow:0 0 10px rgba(0,0,0,0.3); z-index:1000;">
+        <h3>Add New Student</h3>
+        <label>Name: <input id="modalName" type="text" /></label><br />
+        <label>City: <input id="modalCity" type="text" /></label><br />
+        <label>State: <input id="modalState" type="text" /></label><br />
+        <label>College Year: <input id="modalCollegeYear" type="number" /></label><br /><br />
+        <button onclick="addFromModal()">Add</button>
+        <button onclick="hideAddModal()">Cancel</button>
+    </div>
+
+</body>
+
+<script>
+    const baseViewerUrl = "@Model.SSRSReportViewerUrl";
+    const apiBaseUrl = "@Model.StudentApiBaseUrl";
+
+    function openReport(reportPath) {
+        const fullUrl = `${baseViewerUrl}?report=${encodeURIComponent(reportPath)}`;
+        window.open(fullUrl, '_blank');
+    }
+
+    function openSSRSReport() {
+        window.open(baseViewerUrl, "_blank");
+    }
+
+    async function submitStudent() {
+        const student = {
+            name: document.getElementById('name').value,
+            city: document.getElementById('city').value,
+            state: document.getElementById('state').value,
+            collegeYear: parseInt(document.getElementById('collegeYear').value)
+        };
+
+        const response = await fetch(apiBaseUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(student)
+        });
+
+        const msg = document.getElementById('addMessage');
+        if (response.ok) {
+            msg.innerText = "Student added successfully.";
+            msg.className = "success";
+            loadAllStudents();
+        } else {
+            msg.innerText = "Failed to add student.";
+            msg.className = "error";
+        }
+    }
+
+    async function addFromModal() {
+        const student = {
+            name: document.getElementById('modalName').value,
+            city: document.getElementById('modalCity').value,
+            state: document.getElementById('modalState').value,
+            collegeYear: parseInt(document.getElementById('modalCollegeYear').value)
+        };
+
+        const response = await fetch(apiBaseUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(student)
+        });
+
+        if (response.ok) {
+            hideAddModal();
+            loadAllStudents();
+        } else {
+            alert("Failed to add student.");
+        }
+    }
+
+    function showAddModal() {
+        document.getElementById("addModal").style.display = "block";
+    }
+
+    function hideAddModal() {
+        document.getElementById("addModal").style.display = "none";
+    }
+
+    async function searchStudent() {
+        const name = document.getElementById("searchName").value.trim();
+        const resultDiv = document.getElementById("searchResult");
+
+        if (!name) {
+            resultDiv.innerHTML = `<p style="color:red">Please enter a student name.</p>`;
+            return;
+        }
+
+        const response = await fetch(`${apiBaseUrl}/by-name?name=${encodeURIComponent(name)}`);
+
+        if (response.ok) {
+            const student = await response.json();
+            resultDiv.innerHTML = `
+                <h3>Search Result:</h3>
+                <p><strong>Name:</strong> ${student.name}</p>
+                <p><strong>City:</strong> ${student.city}</p>
+                <p><strong>State:</strong> ${student.state}</p>
+                <p><strong>College Year:</strong> ${student.collegeYear}</p>
+            `;
+        } else {
+            resultDiv.innerHTML = `<p style="color:red">Student not found or error occurred.</p>`;
+        }
+    }
+
+    async function deleteStudent() {
+        const name = document.getElementById("deleteName").value.trim();
+        const msg = document.getElementById("deleteMessage");
+
+        if (!name) {
+            msg.innerText = "Please enter a student name to delete.";
+            msg.style.color = "red";
+            return;
+        }
+
+        const response = await fetch(`${apiBaseUrl}/by-name?name=${encodeURIComponent(name)}`, {
+            method: 'DELETE'
+        });
+
+        if (response.ok) {
+            const result = await response.text();
+            msg.innerText = result;
+            msg.style.color = "green";
+            loadAllStudents();
+        } else {
+            msg.innerText = `Delete failed: ${await response.text()}`;
+            msg.style.color = "red";
+        }
+    }
+
+    async function deleteStudentByName(name) {
+        if (!confirm(`Are you sure you want to delete "${name}"?`)) return;
+
+        const response = await fetch(`${apiBaseUrl}/by-name?name=${encodeURIComponent(name)}`, {
+            method: 'DELETE'
+        });
+
+        if (response.ok) {
+            loadAllStudents();
+        } else {
+            alert("Failed to delete student.");
+        }
+    }
+
+    async function downloadExcel() {
+        const link = document.createElement('a');
+        link.href = `${apiBaseUrl}/export`;
+        link.download = "Students.xlsx";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+
+    async function loadAllStudents() {
+        const tableDiv = document.getElementById("studentTable");
+        const response = await fetch(apiBaseUrl);
+        if (response.ok) {
+            const students = await response.json();
+            if (students.length === 0) {
+                tableDiv.innerHTML = "<p>No students found.</p>";
+                return;
+            }
+
+            let html = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>City</th>
+                            <th>State</th>
+                            <th>College Year</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            students.forEach(s => {
+                html += `
+                    <tr>
+                        <td>${s.name}</td>
+                        <td>${s.city}</td>
+                        <td>${s.state}</td>
+                        <td>${s.collegeYear}</td>
+                        <td><button onclick="deleteStudentByName('${s.name}')">Delete</button></td>
+                    </tr>
+                `;
+            });
+
+            html += `</tbody></table>`;
+            tableDiv.innerHTML = html;
+        } else {
+            tableDiv.innerHTML = "<p>Failed to load students.</p>";
+        }
+    }
+
+    window.onload = loadAllStudents;
+</script>
