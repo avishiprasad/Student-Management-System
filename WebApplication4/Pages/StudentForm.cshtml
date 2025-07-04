@@ -11,7 +11,6 @@
 <body>
 
     <nav class="navbar">
-        <div class="nav-left">
             <button onclick="downloadExcel()">Download Excel</button>
             <button onclick="openSSRSReport()">View SSRS Report</button>
 
@@ -24,20 +23,9 @@
                     <a href="#" onclick="openReport('/Training/CollegeYearDatabase')">College Year Report</a>
                 </div>
             </div>
-        </div>
-
-        <div class="nav-right">
-            <form id="searchForm">
-                <input id="searchName" type="text" placeholder="Enter student name" />
-                <button type="button" onclick="searchStudent()">Search</button>
-            </form>
-        </div>
     </nav>
 
-
-    <div id="searchResult"></div>
-
-    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px; margin-top: 10px;">
         <h2 style="margin: 0;">All Students</h2>
         <button type="button" onclick="showAddModal()">+</button>
     </div>
@@ -124,30 +112,22 @@
         document.getElementById("addModal").style.display = "none";
     }
 
-    async function searchStudent() {
-        const name = document.getElementById("searchName").value.trim();
-        const resultDiv = document.getElementById("searchResult");
+    function filterTableByName() {
+        const filter = document.getElementById("searchName").value.toLowerCase();
+        const rows = document.querySelectorAll("#studentTable tbody tr");
 
-        if (!name) {
-            resultDiv.innerHTML = `<p style="color:red">Please enter a student name.</p>`;
-            return;
-        }
+        rows.forEach(row => {
+            const nameCell = row.querySelector("td");
+            const name = nameCell?.textContent?.toLowerCase() || "";
 
-        const response = await fetch(`${apiBaseUrl}/by-name?name=${encodeURIComponent(name)}`);
-
-        if (response.ok) {
-            const student = await response.json();
-            resultDiv.innerHTML = `
-                <h3>Search Result:</h3>
-                <p><strong>Name:</strong> ${student.name}</p>
-                <p><strong>City:</strong> ${student.city}</p>
-                <p><strong>State:</strong> ${student.state}</p>
-                <p><strong>College Year:</strong> ${student.collegeYear}</p>
-            `;
-        } else {
-            resultDiv.innerHTML = `<p style="color:red">Student not found or error occurred.</p>`;
-        }
+            if (name.startsWith(filter)) {
+                row.style.display = "";
+            } else {
+                row.style.display = "none";
+            }
+        });
     }
+
 
     async function deleteStudent() {
         const name = document.getElementById("deleteName").value.trim();
@@ -209,17 +189,26 @@
 
             let html = `
                 <table>
-                    <thead>
-                        <tr>
-                            <th>Name</th>
-                            <th>City</th>
-                            <th>State</th>
-                            <th>College Year</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody>
+                   <thead>
+                     <tr>
+                      <th><input type="text" id="filterName" placeholder="Search Name" oninput="filterTable()" /></th>
+                      <th><input type="text" id="filterCity" placeholder="Search City" oninput="filterTable()" /></th>
+                      <th><input type="text" id="filterState" placeholder="Search State" oninput="filterTable()" /></th>
+                      <th><input type="text" id="filterYear" placeholder="Search Year" oninput="filterTable()" /></th>
+                      <th><button onclick="resetFilters()">Reset</button></th>
+                     </tr>
+                   <tr>
+                       <th onclick="sortTable(0)">Name ⬍</th>
+                       <th onclick="sortTable(1)">City ⬍</th>
+                       <th onclick="sortTable(2)">State ⬍</th>
+                       <th onclick="sortTable(3)">College Year ⬍</th>
+                       <th>Action</th>
+                   </tr>
+              </thead>
+                <tbody>
             `;
+
+
 
             students.forEach(s => {
                 html += `
@@ -228,7 +217,10 @@
                         <td>${s.city}</td>
                         <td>${s.state}</td>
                         <td>${s.collegeYear}</td>
-                        <td><button onclick="deleteStudentByName('${s.name}')">Delete</button></td>
+                        <td>
+                               <button style="background-color: white; font-size: 16px;" title="Delete" onclick="deleteStudentByName('${s.name}')">🗑️</button>
+                               <button style="background-color: white; font-size: 16px;" title="Edit" onclick='editStudent(${JSON.stringify(s)})'>✏️</button>
+                        </td>
                     </tr>
                 `;
             });
@@ -238,6 +230,130 @@
         } else {
             tableDiv.innerHTML = "<p>Failed to load students.</p>";
         }
+    }
+    function editStudent(student) {
+        document.getElementById("modalName").value = student.name;
+        document.getElementById("modalCity").value = student.city;
+        document.getElementById("modalState").value = student.state;
+        document.getElementById("modalCollegeYear").value = student.collegeYear;
+
+        // Disable name input to prevent changing primary identifier (or keep it editable if you prefer)
+        document.getElementById("modalName").disabled = true;
+
+        showAddModal();
+
+        // Change add button to update
+        const addBtn = document.querySelector("#addModal button[onclick='addFromModal()']");
+        addBtn.innerText = "Update";
+        addBtn.onclick = function () {
+            updateStudent(student.name);
+        };
+    }
+    async function updateStudent(originalName) {
+        const student = {
+            name: document.getElementById('modalName').value,
+            city: document.getElementById('modalCity').value,
+            state: document.getElementById('modalState').value,
+            collegeYear: parseInt(document.getElementById('modalCollegeYear').value)
+        };
+
+        const response = await fetch(`${apiBaseUrl}/by-name?name=${encodeURIComponent(originalName)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(student)
+        });
+
+        if (response.ok) {
+            hideAddModal();
+            loadAllStudents();
+        } else {
+            alert("Failed to update student.");
+        }
+    }
+    function showAddModal() {
+        document.getElementById("addModal").style.display = "block";
+        document.getElementById("modalName").disabled = false;
+        const addBtn = document.querySelector("#addModal button[onclick]");
+        addBtn.innerText = "Add";
+        addBtn.onclick = addFromModal;
+    }
+
+    function filterTable() {
+        const nameFilter = document.getElementById("filterName").value.toLowerCase();
+        const cityFilter = document.getElementById("filterCity").value.toLowerCase();
+        const stateFilter = document.getElementById("filterState").value.toLowerCase();
+        const yearFilter = document.getElementById("filterYear").value.toLowerCase();
+
+        const rows = document.querySelectorAll("#studentTable tbody tr");
+
+        rows.forEach(row => {
+            const cells = row.querySelectorAll("td");
+
+            let [name, city, state, year] = Array.from(cells).slice(0, 4).map(cell => cell.textContent.toLowerCase());
+
+            const match =
+                name.startsWith(nameFilter) &&
+                city.startsWith(cityFilter) &&
+                state.startsWith(stateFilter) &&
+                year.startsWith(yearFilter);
+
+            row.style.display = match ? "" : "none";
+
+            // Highlight matches
+            if (match) {
+                highlightText(cells[0], nameFilter);
+                highlightText(cells[1], cityFilter);
+                highlightText(cells[2], stateFilter);
+                highlightText(cells[3], yearFilter);
+            }
+        });
+    }
+
+    function highlightText(cell, filter) {
+        if (!filter) {
+            cell.innerHTML = cell.textContent;
+            return;
+        }
+        const text = cell.textContent;
+        const index = text.toLowerCase().indexOf(filter);
+        if (index >= 0) {
+            const match = text.substring(index, index + filter.length);
+            const highlighted = `<mark>${match}</mark>`;
+            cell.innerHTML = text.substring(0, index) + highlighted + text.substring(index + filter.length);
+        }
+    }
+    function resetFilters() {
+        document.getElementById("filterName").value = "";
+        document.getElementById("filterCity").value = "";
+        document.getElementById("filterState").value = "";
+        document.getElementById("filterYear").value = "";
+        filterTable();
+    }
+    let currentSortColumn = null;
+    let sortAscending = true;
+
+    function sortTable(colIndex) {
+        const tbody = document.querySelector("#studentTable tbody");
+        const rows = Array.from(tbody.querySelectorAll("tr"))
+            .filter(row => row.style.display !== "none");
+
+        rows.sort((a, b) => {
+            const cellA = a.children[colIndex].textContent.trim().toLowerCase();
+            const cellB = b.children[colIndex].textContent.trim().toLowerCase();
+
+            if (cellA < cellB) return sortAscending ? -1 : 1;
+            if (cellA > cellB) return sortAscending ? 1 : -1;
+            return 0;
+        });
+
+        // Flip direction if clicking the same column again
+        if (currentSortColumn === colIndex) sortAscending = !sortAscending;
+        else sortAscending = true;
+        currentSortColumn = colIndex;
+
+        // Clear and re-add sorted rows
+        tbody.innerHTML = "";
+        rows.forEach(row => tbody.appendChild(row));
     }
 
     window.onload = loadAllStudents;

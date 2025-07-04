@@ -315,9 +315,99 @@ namespace WebApplication4.Controllers
             string excelName = $"Students_{DateTime.Now:yyyyMMddHHmmss}.xlsx";
             return File(stream, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", excelName);
         }
+        [HttpPut("by-name")]
+        public IActionResult UpdateStudentByName([FromQuery] string name, [FromBody] StudentRequest updatedStudent)
+        {
+            using (SqlConnection conn = new SqlConnection(_connectionString))
+            {
+                conn.Open();
 
-        
-        
+                SqlTransaction transaction = conn.BeginTransaction();
+
+                try
+                {
+                    // 1. Get or insert State
+                    int stateId;
+                    using (SqlCommand cmd = new SqlCommand("SELECT StateId FROM pstates WHERE StateName = @StateName", conn, transaction))
+                    {
+                        cmd.Parameters.AddWithValue("@StateName", updatedStudent.State);
+                        object result = cmd.ExecuteScalar();
+
+                        if (result != null)
+                            stateId = (int)result;
+                        else
+                        {
+                            cmd.CommandText = "INSERT INTO pstates (StateName) OUTPUT INSERTED.StateId VALUES (@StateName)";
+                            stateId = (int)cmd.ExecuteScalar();
+                        }
+                    }
+
+                    // 2. Get or insert City
+                    int cityId;
+                    using (SqlCommand cmd = new SqlCommand("SELECT CityId FROM pcities WHERE CityName = @CityName AND StateId = @StateId", conn, transaction))
+                    {
+                        cmd.Parameters.AddWithValue("@CityName", updatedStudent.City);
+                        cmd.Parameters.AddWithValue("@StateId", stateId);
+                        object result = cmd.ExecuteScalar();
+
+                        if (result != null)
+                            cityId = (int)result;
+                        else
+                        {
+                            cmd.CommandText = "INSERT INTO pcities (CityName, StateId) OUTPUT INSERTED.CityId VALUES (@CityName, @StateId)";
+                            cityId = (int)cmd.ExecuteScalar();
+                        }
+                    }
+
+                    // 3. Get or insert College
+                    int collegeId;
+                    using (SqlCommand cmd = new SqlCommand("SELECT CollegeId FROM pcolleges WHERE CollegeYear = @Year", conn, transaction))
+                    {
+                        cmd.Parameters.AddWithValue("@Year", updatedStudent.CollegeYear);
+                        object result = cmd.ExecuteScalar();
+
+                        if (result != null)
+                            collegeId = (int)result;
+                        else
+                        {
+                            cmd.CommandText = "INSERT INTO pcolleges (CollegeYear) OUTPUT INSERTED.CollegeId VALUES (@Year)";
+                            collegeId = (int)cmd.ExecuteScalar();
+                        }
+                    }
+
+                    // 4. Update student
+                    string updateQuery = @"
+                UPDATE pstudents 
+                SET CityId = @CityId, CollegeId = @CollegeId 
+                WHERE Name = @Name";
+
+                    using (SqlCommand cmd = new SqlCommand(updateQuery, conn, transaction))
+                    {
+                        cmd.Parameters.AddWithValue("@CityId", cityId);
+                        cmd.Parameters.AddWithValue("@CollegeId", collegeId);
+                        cmd.Parameters.AddWithValue("@Name", name);
+                        int rowsAffected = cmd.ExecuteNonQuery();
+
+                        if (rowsAffected == 0)
+                        {
+                            transaction.Rollback();
+                            return NotFound($"No student found with name '{name}' to update.");
+                        }
+                    }
+
+                    transaction.Commit();
+                    return Ok("Student updated successfully.");
+                }
+                catch (Exception ex)
+                {
+                    transaction.Rollback();
+                    return StatusCode(500, $"Error updating student: {ex.Message}");
+                }
+            }
+        }
+
+
+
 
     }
 }
